@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#C8420A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>RestoPOS</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">🍽</div>
+    <div>
+      <div class="brand-name">RestoPOS</div>
+      <div class="brand-sub" id="sidebar-role-label">Loading…</div>
+    </div>
+  </div>
+
+  <div class="conn-bar" id="conn-bar">
+    <span class="conn-dot" id="conn-dot"></span>
+    <span id="conn-label">Connecting…</span>
+    <button class="sync-btn" id="sync-btn" onclick="App.syncOfflineQueue()" title="Sync queued orders">↑</button>
+  </div>
+
+  <nav class="nav-links" id="nav-links"></nav>
+
+  <div class="sidebar-footer">
+    <div class="waiter-info">
+      <div class="waiter-avatar" id="waiter-avatar">?</div>
+      <div style="flex:1">
+        <div class="waiter-name" id="waiter-name-display">—</div>
+        <div class="waiter-role" id="waiter-role-display">—</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="Auth.logout()" title="Logout" style="padding:5px 8px">⏻</button>
+    </div>
+  </div>
+</nav>
+
+<div class="mobile-topbar">
+  <button class="hamburger" onclick="App.toggleSidebar()">☰</button>
+  <div class="mobile-title" id="mobile-title">New Order</div>
+  <div class="conn-dot-mobile" id="conn-dot-mobile"></div>
+</div>
+
+<main class="content" id="content">
+
+  <!-- ── ORDER VIEW ─────────────────────────────────────────── -->
+  <div class="view active" id="view-order">
+    <div class="view-header">
+      <div>
+        <h1 class="view-title">New Order</h1>
+        <p class="view-sub">Tap items to add — auto-routed to kitchen or bar</p>
+      </div>
+      <div class="header-actions">
+        <label class="field-label" style="margin:0">Table</label>
+        <select id="table-select" class="select" onchange="App.setTable(this.value)">
+          <option value="">— select —</option>
+        </select>
+        <span id="waiter-badge" style="font-size:12px;color:var(--text-muted);padding:4px 8px;background:var(--bg);border-radius:6px;border:0.5px solid var(--border)"></span>
+      </div>
+    </div>
+    <div class="order-layout">
+      <div>
+        <div class="menu-search-bar">
+          <input class="input" id="menu-search" placeholder="Search menu…" oninput="App.filterMenu(this.value)" style="flex:1">
+          <div class="dest-filter">
+            <button class="filter-btn active" data-dest="all"     onclick="App.setDestFilter('all',this)">All</button>
+            <button class="filter-btn"        data-dest="kitchen" onclick="App.setDestFilter('kitchen',this)">🍽 Kitchen</button>
+            <button class="filter-btn"        data-dest="bar"     onclick="App.setDestFilter('bar',this)">🍺 Bar</button>
+          </div>
+        </div>
+        <div id="menu-categories"></div>
+      </div>
+      <aside class="cart-panel">
+        <div class="cart-head">
+          <span class="cart-title">Order</span>
+          <span class="cart-table-badge" id="cart-table-badge">No table</span>
+        </div>
+        <div class="cart-body" id="cart-body">
+          <div class="cart-empty">Tap menu items to add them</div>
+        </div>
+        <div class="cart-foot">
+          <div class="total-rows">
+            <div class="total-row"><span>Subtotal</span><span id="c-subtotal">KSh 0</span></div>
+            <div class="total-row muted"><span>VAT 16%</span><span id="c-tax">KSh 0</span></div>
+            <div class="total-row big"><span>Total</span><span id="c-total">KSh 0</span></div>
+          </div>
+          <div class="note-row"><input class="input" id="order-note" placeholder="Order note (optional)…"></div>
+          <div class="cart-actions">
+            <button class="btn btn-ghost" onclick="App.clearCart()">Clear</button>
+            <button class="btn btn-primary" onclick="App.sendOrder()">Send Order ↗</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ── ACTIVE ORDERS ──────────────────────────────────────── -->
+  <div class="view" id="view-orders">
+    <div class="view-header">
+      <div><h1 class="view-title">Active Orders</h1><p class="view-sub">Live order queue</p></div>
+      <div class="header-actions">
+        <select class="select" id="orders-filter" onchange="App.loadOrders()">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="cooking">Cooking</option>
+          <option value="ready">Ready</option>
+          <option value="paid">Paid</option>
+          <option value="void">Void</option>
+        </select>
+        <button class="btn btn-ghost" onclick="App.loadOrders()">↺ Refresh</button>
+      </div>
+    </div>
+    <div class="orders-grid" id="orders-grid"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <!-- ── TABLES ─────────────────────────────────────────────── -->
+  <div class="view" id="view-tables">
+    <div class="view-header">
+      <div><h1 class="view-title">Tables</h1><p class="view-sub">Tap a table to open its order</p></div>
+      <div class="header-actions" id="tables-actions"></div>
+    </div>
+    <div class="tables-grid" id="tables-grid"></div>
+  </div>
+
+  <!-- ── RECEIPTS ───────────────────────────────────────────── -->
+  <div class="view" id="view-receipts">
+    <div class="view-header">
+      <div><h1 class="view-title">Receipts &amp; Print</h1><p class="view-sub">Preview and print all receipt types</p></div>
+    </div>
+    <div class="receipts-layout">
+      <div class="receipt-controls">
+        <div class="field-group">
+          <label class="field-label">Order</label>
+          <select class="select" id="receipt-order-select" onchange="App.loadReceipt()" style="width:100%">
+            <option value="">— select order —</option>
+          </select>
+        </div>
+        <div class="receipt-type-btns">
+          <button class="rtype-btn active" data-type="customer" onclick="App.setReceiptType('customer',this)">📄 Customer Bill</button>
+          <button class="rtype-btn" data-type="kitchen"  onclick="App.setReceiptType('kitchen',this)">🍽 Kitchen Ticket</button>
+          <button class="rtype-btn" data-type="bar"      onclick="App.setReceiptType('bar',this)">🍺 Bar Ticket</button>
+          <button class="rtype-btn" data-type="invoice"  onclick="App.setReceiptType('invoice',this)">🧾 Invoice (Paid)</button>
+        </div>
+        <div class="pay-section" id="pay-section" style="display:none;flex-direction:column;gap:8px">
+          <div class="field-group">
+            <label class="field-label">Payment method</label>
+            <select class="select" id="pay-method" style="width:100%" onchange="App.onPayMethodChange()">
+              <option value="cash">Cash</option>
+              <option value="mpesa">M-Pesa</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
+          <div class="field-group" id="mpesa-ref-row" style="display:none">
+            <label class="field-label">M-Pesa reference</label>
+            <input class="input" id="mpesa-ref" placeholder="e.g. QHX4K1234">
+          </div>
+          <button class="btn btn-primary btn-full" onclick="App.processPayment()">Mark as Paid ✓</button>
+        </div>
+        <div id="void-section" style="display:none">
+          <button class="btn btn-danger btn-full" onclick="App.voidCurrentOrder()">Void Order</button>
+        </div>
+        <button class="btn btn-primary btn-full" id="print-btn" style="display:none" onclick="App.printReceipt()">🖨 Print Receipt</button>
+      </div>
+      <div class="receipt-preview" id="receipt-preview">
+        <div class="empty-state">Select an order to preview</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── KITCHEN DISPLAY ───────────────────────────────────── -->
+  <div class="view" id="view-kds">
+    <div class="view-header kds-header kitchen-header">
+      <div>
+        <h1 class="view-title" style="color:#fff">👨‍🍳 Kitchen Display</h1>
+        <p class="view-sub" style="color:rgba(255,255,255,0.7)">Real-time order queue for kitchen staff</p>
+      </div>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="App.loadKDS()">↺ Refresh</button>
+    </div>
+    <div class="kds-grid" id="kds-grid"></div>
+  </div>
+
+  <!-- ── BAR DISPLAY ───────────────────────────────────────── -->
+  <div class="view" id="view-bar">
+    <div class="view-header kds-header bar-header">
+      <div>
+        <h1 class="view-title" style="color:#fff">🍺 Bar Display</h1>
+        <p class="view-sub" style="color:rgba(255,255,255,0.7)">Beverage orders for bar staff</p>
+      </div>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="App.loadBar()">↺ Refresh</button>
+    </div>
+    <div class="kds-grid" id="bar-grid"></div>
+  </div>
+
+  <!-- ── REPORTS ───────────────────────────────────────────── -->
+  <div class="view" id="view-reports">
+    <div class="view-header">
+      <div><h1 class="view-title">Reports</h1><p class="view-sub">Sales, orders, staff and inventory analytics</p></div>
+      <button class="btn btn-primary" onclick="App.runReport()">▶ Run Report</button>
+    </div>
+    <div class="reports-layout">
+      <div class="report-sidebar">
+        <div class="report-type-list" id="report-type-list"></div>
+        <div class="report-filters" id="report-filters">
+          <div class="field-group">
+            <label class="field-label">Date From</label>
+            <input type="date" class="input" id="rep-from">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Date To</label>
+            <input type="date" class="input" id="rep-to">
+          </div>
+          <div class="field-group" id="rep-year-row" style="display:none">
+            <label class="field-label">Year</label>
+            <input type="number" class="input" id="rep-year" placeholder="2024">
+          </div>
+          <div class="field-group" id="rep-dest-row" style="display:none">
+            <label class="field-label">Destination</label>
+            <select class="select" id="rep-dest" style="width:100%">
+              <option value="">All</option>
+              <option value="kitchen">Kitchen</option>
+              <option value="bar">Bar</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="report-main">
+        <div id="report-output"><div class="empty-state">Select a report type and click Run</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MENU MANAGER ──────────────────────────────────────── -->
+  <div class="view" id="view-menu">
+    <div class="view-header">
+      <div><h1 class="view-title">Menu Manager</h1><p class="view-sub">Categories, items, pricing</p></div>
+      <div class="header-actions">
+        <button class="btn btn-ghost" onclick="App.openAddCategoryModal()">+ Category</button>
+        <button class="btn btn-primary" onclick="App.openAddItemModal()">+ Menu Item</button>
+      </div>
+    </div>
+    <div id="menu-manager-grid"></div>
+  </div>
+
+  <!-- ── INVENTORY ─────────────────────────────────────────── -->
+  <div class="view" id="view-inventory">
+    <div class="view-header">
+      <div><h1 class="view-title">Inventory</h1><p class="view-sub">Stock levels, reorder alerts</p></div>
+      <button class="btn btn-primary" onclick="App.openAddStockModal()">+ Add Item</button>
+    </div>
+    <div id="low-stock-banner" style="display:none" class="alert-banner">⚠ Low stock items detected — review below</div>
+    <div id="inventory-grid"></div>
+  </div>
+
+  <!-- ── USER MANAGEMENT ───────────────────────────────────── -->
+  <div class="view" id="view-users">
+    <div class="view-header">
+      <div><h1 class="view-title">Staff Management</h1><p class="view-sub">Create users, manage PINs &amp; roles</p></div>
+      <button class="btn btn-primary" onclick="App.openAddUserModal()">+ Add Staff</button>
+    </div>
+    <div id="users-grid"></div>
+  </div>
+
+  <!-- ── SETTINGS ──────────────────────────────────────────── -->
+  <div class="view" id="view-settings">
+    <div class="view-header"><h1 class="view-title">Settings</h1></div>
+    <div class="settings-layout">
+      <section class="settings-card">
+        <div class="settings-card-title">Restaurant</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Restaurant Name</div></div>
+          <input class="input" id="s-restaurant" style="width:200px" onchange="App.saveSetting('restaurantName',this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Phone</div></div>
+          <input class="input" id="s-phone" style="width:180px" onchange="App.saveSetting('restaurantPhone',this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">M-Pesa Paybill</div></div>
+          <input class="input" id="s-paybill" style="width:140px" onchange="App.saveSetting('mpesaPaybill',this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">VAT Rate</div></div>
+          <select class="select" id="s-vat" onchange="App.saveSetting('vatRate',this.value)">
+            <option value="0.16">16% — Kenya Standard</option>
+            <option value="0">0% — Exempt</option>
+            <option value="0.08">8%</option>
+          </select>
+        </div>
+      </section>
+      <section class="settings-card">
+        <div class="settings-card-title">Printers</div>
+        <div class="settings-row">
+          <div><div class="settings-label">Kitchen Printer IP</div><div class="settings-hint">ESC/POS TCP 9100</div></div>
+          <input class="input" id="s-kitchen-ip" style="width:160px" placeholder="192.168.1.10" onchange="App.saveSetting('kitchenPrinterIP',this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Bar Printer IP</div><div class="settings-hint">ESC/POS TCP 9100</div></div>
+          <input class="input" id="s-bar-ip" style="width:160px" placeholder="192.168.1.11" onchange="App.saveSetting('barPrinterIP',this.value)">
+        </div>
+      </section>
+      <section class="settings-card">
+        <div class="settings-card-title">Network &amp; Sync</div>
+        <div class="settings-row">
+          <div><div class="settings-label">API Base URL</div><div class="settings-hint">Blank = same host</div></div>
+          <input class="input" id="s-api-url" style="width:220px" placeholder="http://192.168.1.5:8000" onchange="App.saveSetting('apiBaseUrl',this.value)">
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Offline Queue</div><div class="settings-hint" id="queue-count">0 actions queued</div></div>
+          <button class="btn btn-ghost" onclick="App.syncOfflineQueue()">Sync Now</button>
+        </div>
+        <div class="settings-row">
+          <div><div class="settings-label">Clear local data</div></div>
+          <button class="btn btn-danger" onclick="App.clearLocalData()">Clear</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── MODALS ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="App.closeModal(event)"></div>
+
+<!-- Toast -->
+<div class="modal" id="modal-toast" style="display:none">
+  <div class="toast-icon" id="toast-icon">✓</div>
+  <div class="toast-body">
+    <div class="toast-title" id="toast-title">Done</div>
+    <div class="toast-msg"   id="toast-msg"></div>
+  </div>
+</div>
+
+<!-- Generic modal (user, item, table, category, stock) -->
+<div class="modal" id="modal-form" style="display:none">
+  <div class="modal-head">
+    <span id="modal-form-title">Form</span>
+    <button onclick="App.closeModal()">✕</button>
+  </div>
+  <div class="modal-body" id="modal-form-body"></div>
+</div>
+
+<!-- Void confirm -->
+<div class="modal" id="modal-void" style="display:none">
+  <div class="modal-head"><span>Void Order</span><button onclick="App.closeModal()">✕</button></div>
+  <div class="modal-body">
+    <p style="font-size:14px;margin-bottom:12px">Confirm void of order <strong id="void-order-id"></strong>?</p>
+    <div class="field-group">
+      <label class="field-label">Reason</label>
+      <input class="input" id="void-reason" placeholder="e.g. Customer cancelled">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-ghost" style="flex:1" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-danger" style="flex:1" onclick="App.confirmVoid()">Void Order</button>
+    </div>
+  </div>
+</div>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="App.toggleSidebar()"></div>
+
+<script src="/static/js/db.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/auth.js"></script>
+<script src="/static/js/receipt.js"></script>
+<script src="/static/js/reports.js"></script>
+<script src="/static/js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
+  }
+</script>
+</body>
+</html>
